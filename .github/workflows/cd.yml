@@ -71,10 +71,25 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Publicar la imagen
+      # QEMU permite construir también la versión arm64 (Mac con chip Apple) desde un runner amd64
+      - uses: docker/setup-qemu-action@v4
+
+      - name: Publicar la imagen (amd64 y arm64)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.IMAGEN }}:latest
+            ${{ env.IMAGEN }}:${{ steps.sha.outputs.corto }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.description=Calculadora en Python (M2T1)
+            org.opencontainers.image.revision=${{ github.event.workflow_run.head_sha }}
+
+      - name: Resumen de la publicación
         run: |
-          docker push "$IMAGEN:latest"
-          docker push "$IMAGEN:${{ steps.sha.outputs.corto }}"
-          echo "## Imagen publicada" >> "$GITHUB_STEP_SUMMARY"
+          echo "## Imagen publicada (linux/amd64 y linux/arm64)" >> "$GITHUB_STEP_SUMMARY"
           echo "- \`$IMAGEN:latest\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- \`$IMAGEN:${{ steps.sha.outputs.corto }}\`" >> "$GITHUB_STEP_SUMMARY"
