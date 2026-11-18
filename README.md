@@ -19,3 +19,8 @@ Calculadora en Python (de la Tarea 2) con un pipeline DevOps mejorado:
 ```bash
 docker run --rm -e OPERACION=suma -e NUM1=40 -e NUM2=2 ghcr.io/anamasterdevops-cpu/m2t1-calculadora:latest
 ```
+
+## Pipelines
+
+- CircleCI: workflow `pipeline-mejorado` (lint + hadolint → tests → seguridad → docker).
+- GitHub Actions: workflows `CI` y `CD` (pestaña *Actions*).
