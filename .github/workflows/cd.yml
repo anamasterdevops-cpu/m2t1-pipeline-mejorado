@@ -1,0 +1,80 @@
+# CD con Docker y GitHub Actions (Parte B.e.ii)
+name: CD
+
+# Se ejecuta cuando termina el workflow "CI" en la rama main
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+env:
+  IMAGEN: ghcr.io/${{ github.repository_owner }}/m2t1-calculadora
+
+jobs:
+  docker:
+    name: Construir, escanear, probar y publicar
+    # Solo si el CI ha terminado bien y venía de un push (no de una pull request)
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    # Permisos del GITHUB_TOKEN: leer el código y publicar paquetes en ghcr.io
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Usamos exactamente el commit que pasó el CI
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Calcular el SHA corto
+        id: sha
+        run: echo "corto=${GITHUB_SHA_CI::7}" >> "$GITHUB_OUTPUT"
+        env:
+          GITHUB_SHA_CI: ${{ github.event.workflow_run.head_sha }}
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Construir la imagen (sin publicar todavía)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          load: true
+          tags: |
+            ${{ env.IMAGEN }}:latest
+            ${{ env.IMAGEN }}:${{ steps.sha.outputs.corto }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.description=Calculadora en Python (M2T1)
+            org.opencontainers.image.revision=${{ github.event.workflow_run.head_sha }}
+
+      - name: Escanear la imagen con Trivy
+        # Acción de terceros fijada por su commit (SHA)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.IMAGEN }}:${{ steps.sha.outputs.corto }}
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: Prueba de humo (40 + 2 = 42)
+        run: |
+          salida=$(docker run --rm -e OPERACION=suma -e NUM1=40 -e NUM2=2 "$IMAGEN:${{ steps.sha.outputs.corto }}")
+          echo "$salida"
+          echo "$salida" | grep -q "Resultado: 42"
+
+      - name: Iniciar sesión en GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publicar la imagen
+        run: |
+          docker push "$IMAGEN:latest"
+          docker push "$IMAGEN:${{ steps.sha.outputs.corto }}"
+          echo "## Imagen publicada" >> "$GITHUB_STEP_SUMMARY"
+          echo "- \`$IMAGEN:latest\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- \`$IMAGEN:${{ steps.sha.outputs.corto }}\`" >> "$GITHUB_STEP_SUMMARY"
