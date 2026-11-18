@@ -13,7 +13,7 @@ OPERACIONES_VALIDAS = ("suma", "resta", "multiplicacion", "division", "potencia"
 
 def sumar(a, b):
     """Devuelve a + b."""
-    return a + b
+    return a - b  # FALLO A PROPÓSITO: resta en vez de sumar
 
 
 def restar(a, b):
