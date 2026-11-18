@@ -1,0 +1,13 @@
+.git
+.github
+.circleci
+tests
+venv
+.venv
+__pycache__/
+*.pyc
+.pytest_cache
+.coverage
+coverage.xml
+htmlcov
+informes
