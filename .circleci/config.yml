@@ -1,0 +1,119 @@
+# Pipeline mejorado de CircleCI (Parte B.a)
+version: 2.1
+
+# Executors: el "entorno" (imagen Docker) en el que se ejecuta cada job
+executors:
+  python:
+    docker:
+      - image: cimg/python:3.14
+    working_directory: ~/repo
+
+# Comandos reutilizables (solo existen en la versión 2.1)
+commands:
+  instalar-dependencias:
+    description: "Crea el venv e instala las herramientas, usando la caché si existe"
+    steps:
+      - restore_cache:
+          keys:
+            - deps-v1-{{ checksum "requirements-dev.txt" }}
+      - run:
+          name: Instalar dependencias
+          command: |
+            python3 -m venv venv
+            . venv/bin/activate
+            pip install -r requirements-dev.txt
+      - save_cache:
+          key: deps-v1-{{ checksum "requirements-dev.txt" }}
+          paths:
+            - venv
+
+jobs:
+  # 1) Estilo del código Python
+  lint:
+    executor: python
+    steps:
+      - checkout
+      - instalar-dependencias
+      - run:
+          name: flake8 (estilo)
+          command: |
+            . venv/bin/activate
+            flake8 . --statistics
+
+  # 1b) Buenas prácticas del Dockerfile
+  hadolint:
+    docker:
+      - image: hadolint/hadolint:v2.15.1-debian
+    steps:
+      - checkout
+      - run:
+          name: hadolint (lint del Dockerfile)
+          command: hadolint Dockerfile
+
+  # 2) Pruebas unitarias con cobertura
+  tests:
+    executor: python
+    steps:
+      - checkout
+      - instalar-dependencias
+      - run:
+          name: pytest con cobertura (mínimo 90 %)
+          command: |
+            . venv/bin/activate
+            mkdir -p informes
+            pytest -v --junitxml=informes/junit.xml \
+              --cov=calculadora --cov-report=term-missing \
+              --cov-report=html:informes/cobertura --cov-fail-under=90
+      # Resultados de los tests: CircleCI los muestra en la pestaña "Tests"
+      - store_test_results:
+          path: informes/junit.xml
+      # Informe HTML de cobertura: se puede abrir desde la pestaña "Artifacts"
+      - store_artifacts:
+          path: informes/cobertura
+          destination: cobertura
+
+  # 3) Seguridad: SAST del código y SCA de las dependencias
+  seguridad:
+    executor: python
+    steps:
+      - checkout
+      - instalar-dependencias
+      - run:
+          name: bandit (SAST)
+          command: |
+            . venv/bin/activate
+            bandit -r calculadora.py
+      - run:
+          name: pip-audit (dependencias vulnerables)
+          command: |
+            . venv/bin/activate
+            pip-audit -r requirements-dev.txt
+
+  # 4) Construcción de la imagen Docker y prueba de humo
+  docker:
+    executor: python
+    steps:
+      - checkout
+      # Arranca un motor Docker remoto para poder hacer docker build dentro del job
+      - setup_remote_docker
+      - run:
+          name: Construir la imagen
+          command: docker build -t m2t1-calculadora:${CIRCLE_SHA1:0:7} .
+      - run:
+          name: Prueba de humo (40 + 2 = 42)
+          command: |
+            salida=$(docker run --rm -e OPERACION=suma -e NUM1=40 -e NUM2=2 m2t1-calculadora:${CIRCLE_SHA1:0:7})
+            echo "$salida"
+            echo "$salida" | grep -q "Resultado: 42"
+
+workflows:
+  pipeline-mejorado:
+    jobs:
+      - lint
+      - hadolint
+      - tests:
+          requires: [lint, hadolint]
+      - seguridad:
+          requires: [tests]
+      - docker:
+          requires: [seguridad]
