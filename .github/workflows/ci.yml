@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v7
+
+      - name: Instalar Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Revisar el estilo con flake8
+        run: flake8 --statistics
+
+      - name: Ejecutar los tests con cobertura
+        run: pytest -v --cov=calculadora --cov-report=term-missing
+
+      - name: Analizar la seguridad con bandit
+        run: bandit calculadora.py
