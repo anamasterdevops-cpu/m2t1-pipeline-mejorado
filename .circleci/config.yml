@@ -30,10 +30,27 @@ jobs:
             source venv/bin/activate
             pip install -r requirements.txt
       - run:
-          name: Ejecutar los tests
+          name: Ejecutar los tests con cobertura
           command: |
             source venv/bin/activate
-            pytest -v
+            pytest -v --cov=calculadora --cov-report=term-missing
+
+  seguridad:
+    docker:
+      - image: cimg/python:3.12
+    steps:
+      - checkout
+      - run:
+          name: Instalar dependencias
+          command: |
+            python3 -m venv venv
+            source venv/bin/activate
+            pip install -r requirements.txt
+      - run:
+          name: Analizar la seguridad del código con bandit
+          command: |
+            source venv/bin/activate
+            bandit calculadora.py
 
 workflows:
   pipeline-mejorado:
@@ -42,3 +59,6 @@ workflows:
       - tests:
           requires:
             - lint
+      - seguridad:
+          requires:
+            - tests
